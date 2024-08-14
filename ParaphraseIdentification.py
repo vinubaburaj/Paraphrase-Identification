@@ -30,6 +30,7 @@ class Utilities:
     def update_data_columns(df):
         df.drop(columns=['#1 ID', '#2 ID'], inplace=True)
         df.rename(columns={'Quality':'Label','#1 String':'Sentence1','#2 String':'Sentence2'}, inplace=True)
+        df.dropna(inplace=True)
         return df
 
     @staticmethod
@@ -77,7 +78,6 @@ class ManualFeatures:
         return " ".join(tokens)
 
     def preprocess_dataframe(self, df):
-        df.dropna(inplace=True)
         df['Preproc_Sentence1'] = df['Sentence1'].apply(self.tokenize_text)
         df['Preproc_Sentence2'] = df['Sentence2'].apply(self.tokenize_text)
         return df
@@ -90,14 +90,14 @@ class ManualFeatures:
         lemmas2 = set(preproc_text2.split())
         return len(lemmas1.intersection(lemmas2))
 
-    def get_avg_embedding(self, tokens):
-        valid_embeddings = [self.word2vec_model.wv[token] for token in tokens if token in self.word2vec_model.wv]
-        return np.mean(valid_embeddings, axis=0) if valid_embeddings else np.zeros(self.word2vec_model.vector_size)
+    def get_avg_embedding(self, tokens, embedding_model):
+        valid_embeddings = [embedding_model.wv[token] for token in tokens if token in embedding_model.wv]
+        return np.mean(valid_embeddings, axis=0) if valid_embeddings else np.zeros(embedding_model.vector_size)
 
     def compute_cosine_similarity(self, vec1, vec2):
         return cosine_similarity(vec1.reshape(1, -1), vec2.reshape(1, -1))[0][0]
 
-    def compute_features(self, df):
+    def compute_features(self, df, embedding_model):
         df['text1_len'] = df['Preproc_Sentence1'].apply(self.get_num_tokens)
         df['text2_len'] = df['Preproc_Sentence2'].apply(self.get_num_tokens)
         df['diff_len'] = (df['text1_len'] - df['text2_len']).abs()
@@ -109,8 +109,8 @@ class ManualFeatures:
 
         df['pair_sim'] = df.apply(
             lambda row: self.compute_cosine_similarity(
-                self.get_avg_embedding(row['Preproc_Sentence1'].split()),
-                self.get_avg_embedding(row['Preproc_Sentence2'].split())
+                self.get_avg_embedding(row['Preproc_Sentence1'].split(), embedding_model),
+                self.get_avg_embedding(row['Preproc_Sentence2'].split(), embedding_model)
             ),
             axis=1
         )
@@ -139,9 +139,10 @@ class ManualFeatures:
             self.word2vec_model.save(word2vec_model_path)
             print("Trained and saved new Word2Vec model.")
 
-        train_data = self.compute_features(train_data)
-        test_data = self.compute_features(test_data)
+        train_data = self.compute_features(train_data, self.word2vec_model)
+        test_data = self.compute_features(test_data, self.word2vec_model)
 
+        # features = ['common_lemma', 'pair_sim']
         features = ['text1_len', 'text2_len', 'diff_len', 'common_lemma', 'pair_sim']
         X_train = train_data[features]
         y_train = train_data['Label']
@@ -175,8 +176,8 @@ class LSTMFeatures:
         self.tokenizer = Tokenizer(num_words=self.VOCABULARY_SIZE, oov_token="<OOV>")
 
     def tokenize_and_pad(self, df, max_len=50):
-        seq1 = self.tokenizer.texts_to_sequences(df['Preproc_Sentence1'].tolist())
-        seq2 = self.tokenizer.texts_to_sequences(df['Preproc_Sentence2'].tolist())
+        seq1 = self.tokenizer.texts_to_sequences(df['Sentence1'].tolist())
+        seq2 = self.tokenizer.texts_to_sequences(df['Sentence2'].tolist())
         seq1_padded = pad_sequences(seq1, maxlen=max_len, padding='post', truncating='post')
         seq2_padded = pad_sequences(seq2, maxlen=max_len, padding='post', truncating='post')
         return seq1_padded, seq2_padded
@@ -200,11 +201,9 @@ class LSTMFeatures:
         train_data = Utilities.update_data_columns(train_data)
         test_data = Utilities.update_data_columns(test_data)
 
-        manual_features = ManualFeatures()
-        train_data = manual_features.preprocess_dataframe(train_data)
-        test_data = manual_features.preprocess_dataframe(test_data)
+        self.tokenizer.fit_on_texts(train_data['Sentence1'].tolist() + train_data['Sentence2'].tolist())
 
-        self.tokenizer.fit_on_texts(train_data['Preproc_Sentence1'].tolist() + train_data['Preproc_Sentence2'].tolist())
+
 
         seq1_train, seq2_train = self.tokenize_and_pad(train_data)
         seq1_test, seq2_test = self.tokenize_and_pad(test_data)
@@ -249,5 +248,5 @@ if __name__ == "__main__":
     manual_features = ManualFeatures()
     manual_features.run()
 
-    lstm_features = LSTMFeatures()
-    lstm_features.run()
+    # lstm_features = LSTMFeatures()
+    # lstm_features.run()
