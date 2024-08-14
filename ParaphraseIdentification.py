@@ -11,9 +11,9 @@ from sklearn.ensemble import GradientBoostingClassifier
 import tensorflow as tf
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Embedding, LSTM, Dense, Dropout, Bidirectional
-
+import joblib
 
 class Utilities:
     @staticmethod
@@ -61,7 +61,14 @@ class Utilities:
 
 class ManualFeatures:
     def __init__(self):
-        self.nlp = spacy.load('en_core_web_sm')
+        try:
+            self.nlp = spacy.load('en_core_web_sm')
+        except OSError:
+            print("Downloading 'en_core_web_sm' model...")
+            from spacy.cli import download
+            download('en_core_web_sm')
+            self.nlp = spacy.load('en_core_web_sm')
+
         self.word2vec_model = None
 
     def tokenize_text(self, text):
@@ -112,6 +119,8 @@ class ManualFeatures:
 
     def run(self):
 
+        train_data = Utilities.load_data(_train=True)
+        test_data = Utilities.load_data(_train=False)
 
         train_data = Utilities.update_data_columns(train_data)
         test_data = Utilities.update_data_columns(test_data)
@@ -119,8 +128,16 @@ class ManualFeatures:
         train_data = self.preprocess_dataframe(train_data)
         test_data = self.preprocess_dataframe(test_data)
 
-        sentences = train_data['Preproc_Sentence1'].tolist() + train_data['Preproc_Sentence2'].tolist()
-        self.word2vec_model = Word2Vec(sentences, vector_size=300, window=5, min_count=1, workers=4)
+        # Check if Word2Vec model exists
+        word2vec_model_path = './models/word2vec_model.bin'
+        if os.path.exists(word2vec_model_path):
+            self.word2vec_model = Word2Vec.load(word2vec_model_path)
+            print("Loaded existing Word2Vec model.")
+        else:
+            sentences = train_data['Preproc_Sentence1'].tolist() + train_data['Preproc_Sentence2'].tolist()
+            self.word2vec_model = Word2Vec(sentences, vector_size=300, window=5, min_count=1, workers=4)
+            self.word2vec_model.save(word2vec_model_path)
+            print("Trained and saved new Word2Vec model.")
 
         train_data = self.compute_features(train_data)
         test_data = self.compute_features(test_data)
@@ -131,8 +148,17 @@ class ManualFeatures:
         X_test = test_data[features]
         y_test = test_data['Label']
 
-        gb_model = GradientBoostingClassifier()
-        gb_model.fit(X_train, y_train)
+        # Check if GradientBoosting model exists
+        gb_model_path = './models/gb_model_manual_features.pkl'
+        if os.path.exists(gb_model_path):
+            gb_model = joblib.load(gb_model_path)
+            print("Loaded existing GradientBoosting model trained on manual features.")
+        else:
+            gb_model = GradientBoostingClassifier()
+            gb_model.fit(X_train, y_train)
+            joblib.dump(gb_model, gb_model_path)
+            print("Trained and saved new GradientBoosting model on manual features.")
+
         y_pred_gb = gb_model.predict(X_test)
 
         Utilities.display_metrics(y_test, y_pred_gb)
@@ -183,9 +209,16 @@ class LSTMFeatures:
         seq1_train, seq2_train = self.tokenize_and_pad(train_data)
         seq1_test, seq2_test = self.tokenize_and_pad(test_data)
 
-        lstm_model = self.build_lstm_model()
-        y_train_binary = np.array(train_data['Label']).reshape(-1, 1)
-        lstm_model.fit(seq1_train, y_train_binary, epochs=self.NEPOCH, batch_size=32, validation_split=0.2)
+        lstm_model_path = './models/lstm_model.h5'
+        if os.path.exists(lstm_model_path):
+            lstm_model = load_model(lstm_model_path)
+            print("Loaded existing LSTM model.")
+        else:
+            lstm_model = self.build_lstm_model()
+            y_train_binary = np.array(train_data['Label']).reshape(-1, 1)
+            lstm_model.fit(seq1_train, y_train_binary, epochs=self.NEPOCH, batch_size=32, validation_split=0.2)
+            lstm_model.save(lstm_model_path)
+            print("Trained and saved new LSTM model.")
 
         train_embeddings1, train_embeddings2 = lstm_model.predict(seq1_train), lstm_model.predict(seq2_train)
         test_embeddings1, test_embeddings2 = lstm_model.predict(seq1_test), lstm_model.predict(seq2_test)
@@ -193,9 +226,17 @@ class LSTMFeatures:
         train_features = np.concatenate([train_embeddings1, train_embeddings2], axis=1)
         test_features = np.concatenate([test_embeddings1, test_embeddings2], axis=1)
 
-        gb_model = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=3)
-        gb_model.fit(train_features, np.ravel(y_train_binary))
-        y_pred_gb = gb_model.predict(test_features)
+        gb_model_lstm_path = './models/gb_model_lstm_features.pkl'
+        if os.path.exists(gb_model_lstm_path):
+            gb_model_lstm = joblib.load(gb_model_lstm_path)
+            print("Loaded existing GradientBoosting model trained on LSTM features.")
+        else:
+            gb_model_lstm = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=3)
+            gb_model_lstm.fit(train_features, np.ravel(y_train_binary))
+            joblib.dump(gb_model_lstm, gb_model_lstm_path)
+            print("Trained and saved new GradientBoosting model on LSTM features.")
+
+        y_pred_gb = gb_model_lstm.predict(test_features)
 
         Utilities.display_metrics(test_data['Label'], y_pred_gb)
         Utilities.display_confusion_matrix(test_data['Label'], y_pred_gb, title='Gradient Boosting using LSTM extracted features')
@@ -204,8 +245,9 @@ class LSTMFeatures:
 if __name__ == "__main__":
     train_data = Utilities.load_data(_train=True)
     test_data = Utilities.load_data(_test=True)
+
     manual_features = ManualFeatures()
-    manual_features.run(train_data, test_data)
+    manual_features.run()
 
     lstm_features = LSTMFeatures()
-    lstm_features.run(train_data, test_data)
+    lstm_features.run()
