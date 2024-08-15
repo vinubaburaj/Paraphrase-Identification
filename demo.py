@@ -23,7 +23,6 @@ class Demo:
             self.lstm_gb_model = joblib.load('models/gb_model_lstm_features.pkl')
 
     def run_demo(self):
-        # self.choose_model()
         self.load_models()
 
         print("Welcome to this demo of Paraphrase Identification using LSTM! Modify the 'sample_sentences' to test for different inputs")
@@ -43,24 +42,6 @@ class Demo:
             ("He went to school", "They are at the playground."),
         ]
 
-        # if self.model_type == "Manual":
-        #     manual_features = ManualFeatures()
-        #
-        #     word2vec_model_path = './models/word2vec_model.bin'
-        #
-        #     word2vec_model = Word2Vec.load(word2vec_model_path)
-        #
-        #     sample_df = pd.DataFrame(sample_sentences, columns=["Sentence1", "Sentence2"])
-        #     sample_df = manual_features.preprocess_dataframe(sample_df)
-        #     sample_df = manual_features.compute_features(sample_df, word2vec_model)
-        #
-        #     features = ['text1_len', 'text2_len', 'diff_len', 'common_lemma', 'pair_sim']
-        #     # features = ['common_lemma', 'pair_sim']
-        #     X_sample = sample_df[features]
-        #
-        #     predictions = self.manual_gb_model.predict(X_sample)
-        #     print("Predictions using Manual Features:")
-        #     print(predictions)
 
         if self.model_type == "LSTM":
             lstm_features = LSTMFeatures()
