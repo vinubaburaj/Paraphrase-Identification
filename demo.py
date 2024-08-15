@@ -15,20 +15,6 @@ class Demo:
         self.lstm_model = None
         self.lstm_gb_model = None
 
-    # def choose_model(self):
-    #     print("Choose a model to run:")
-    #     print("1. Manual Features")
-    #     print("2. LSTM Features")
-    #     choice = input("Enter 1 or 2: ")
-    #
-    #     if choice == "1":
-    #         self.model_type = "Manual"
-    #     elif choice == "2":
-    #         self.model_type = "LSTM"
-    #     else:
-    #         print("Invalid choice. Please enter 1 or 2.")
-    #         self.choose_model()
-
     def load_models(self):
         if self.model_type == "Manual":
             self.manual_gb_model = joblib.load('models/gb_model_manual_features.pkl')
@@ -42,6 +28,8 @@ class Demo:
 
         print("Welcome to this demo of Paraphrase Identification using LSTM! Modify the 'sample_sentences' to test for different inputs")
 
+        # Update this list to test for different input sentences.
+        # In every row, the two sentences to test for are comma separated.
         sample_sentences = [
             ("The cat is sitting on the mat.", "A cat is resting on the mat."),
             ("She is writing a letter.", "She is composing a letter."),
